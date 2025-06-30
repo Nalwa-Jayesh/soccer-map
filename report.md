@@ -6,7 +6,7 @@ The system is designed to identify and map soccer players between two different 
 
 ### 1.1. Player Detection
 - A deep learning-based object detector, specifically a **YOLO (You Only Look Once)** model, is used to identify players in each frame.
-- The system is optimized to use a pre-trained, custom-tuned model (`best.pt`) for higher accuracy in detecting soccer players, falling back to a standard YOLOv8 model if the custom one isn't available.
+- The system is optimized to use a pre-trained, custom-tuned model (`best.pt`) for higher accuracy in detecting soccer players, falling back to a standard YOLOv11 model if the custom one isn't available.
 - Detections are performed on a GPU (if available) for accelerated processing, with batch processing capabilities to improve throughput.
 
 ### 1.2. Feature Extraction
