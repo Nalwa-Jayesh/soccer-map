@@ -17,7 +17,7 @@ from src.features import extract_color_features, extract_spatial_features, extra
 from src.similarity import calculate_similarity
 from src.tracking import update_tracks, clean_old_tracks
 from src.core import PlayerMappingSystem
-from src.visualization import stream_and_visualize_mapping
+from src.visualization import visualize_mapping_from_file
 
 # Configure logging
 logging.basicConfig(
@@ -25,34 +25,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Centralized configuration
+CONFIG = {
+    'broadcast_video': 'broadcast.mp4',
+    'tacticam_video': 'tacticam.mp4',
+    'model_path': 'best.pt',
+    'output_dir': 'output',
+    'output_file': 'output/player_mapping_results.json',
+    'visualization_file': 'output/broadcast_with_mapping.mp4',
+    'max_frames': 1000,
+    'batch_size': 4,
+    'similarity_threshold': 0.75,
+}
+
+"""
+Main entry point for the Soccer Player Cross-Mapping System.
+This script runs the player mapping pipeline and generates visualizations.
+"""
 
 def main():
     """
-    Main execution function with comprehensive error handling and logging.
+    Main execution function for the multi-camera player mapping system.
+    Handles initialization, processing, and visualization, with error handling and logging.
     """
     logger.info("=== Multi-Camera Player Mapping System ===")
 
-    # Check for required video files
-    broadcast_video = "broadcast.mp4"
-    tacticam_video = "tacticam.mp4"
-    model_path = "best.pt"  # Optional custom model
-
     # Create output directory if it doesn't exist
-    os.makedirs("output", exist_ok=True)
-    output_file = "output/player_mapping_results.json"
-    visualization_file = "output/broadcast_with_mapping.mp4"
+    os.makedirs(CONFIG['output_dir'], exist_ok=True)
 
     try:
         # Initialize mapping system
         logger.info("Initializing player mapping system...")
-        mapper = PlayerMappingSystem(model_path if os.path.exists(model_path) else None)
+        mapper = PlayerMappingSystem(CONFIG['model_path'] if os.path.exists(CONFIG['model_path']) else None)
 
         # Process videos
         results = mapper.process_videos(
-            broadcast_path=broadcast_video,
-            tacticam_path=tacticam_video,
-            output_path=output_file,
-            max_frames=1000,  # Limit frames for demo
+            broadcast_path=CONFIG['broadcast_video'],
+            tacticam_path=CONFIG['tacticam_video'],
+            output_path=CONFIG['output_file'],
+            max_frames=CONFIG['max_frames'],  # Limit frames for demo
         )
 
         # Display results
@@ -67,16 +78,18 @@ def main():
 
             # Create visualization video
             logger.info("\n=== CREATING VISUALIZATION VIDEO ===")
-            viz_success = mapper.visualize_mapping_from_file(
-                broadcast_path=broadcast_video,
-                mapping_results_path=output_file,
-                output_video_path=visualization_file,
+            viz_success = visualize_mapping_from_file(
+                broadcast_path=CONFIG['broadcast_video'],
+                tacticam_path=CONFIG['tacticam_video'],
+                mapping_results_path=CONFIG['output_file'],
+                output_video_path=CONFIG['visualization_file'],
+                detect_players_fn=mapper.detect_players_in_frame
             )
 
             if viz_success:
                 logger.info("\n✅ COMPLETE! Check these files:")
-                logger.info(f"📊 Mapping Data: {output_file}")
-                logger.info(f"🎥 Visualization: {visualization_file}")
+                logger.info(f"📊 Mapping Data: {CONFIG['output_file']}")
+                logger.info(f"🎥 Visualization: {CONFIG['visualization_file']}")
             else:
                 logger.warning(
                     "Visualization creation failed, but mapping data is available"
@@ -87,7 +100,7 @@ def main():
                 "No mapping results generated. Check input videos and try again."
             )
 
-        logger.info(f"\nDetailed results saved to: {output_file}")
+        logger.info(f"\nDetailed results saved to: {CONFIG['output_file']}")
 
     except KeyboardInterrupt:
         logger.info("Processing interrupted by user")
@@ -114,6 +127,8 @@ def create_visualization_only():
     """
     Standalone function to create visualization from existing mapping results.
     Useful when you already have mapping results and just want to create the video.
+    Returns:
+        bool: True if visualization was created successfully, False otherwise.
     """
     logger.info("=== Creating Visualization from Existing Results ===")
 
@@ -125,10 +140,12 @@ def create_visualization_only():
     mapper = PlayerMappingSystem()
 
     # Create visualization
-    success = mapper.visualize_mapping_from_file(
+    success = visualize_mapping_from_file(
         broadcast_path=broadcast_video,
+        tacticam_path=tacticam_video,
         mapping_results_path=mapping_results,
         output_video_path=output_video,
+        detect_players_fn=mapper.detect_players_in_frame
     )
 
     if success:
@@ -140,6 +157,10 @@ def create_visualization_only():
 
 
 if __name__ == "__main__":
+    """
+    Command-line interface for the Soccer Player Mapping System.
+    Parses arguments and runs the appropriate pipeline step.
+    """
     parser = argparse.ArgumentParser(description="Soccer Player Mapping System")
     parser.add_argument('--visualize', action='store_true', help='Run real-time visualization utility')
     parser.add_argument('--broadcast', type=str, default='broadcast.mp4', help='Broadcast video path')

@@ -1,172 +1,186 @@
 import cv2
 import os
 import logging
-from src.core import PlayerMappingSystem
-from typing import Optional
+import json
+from typing import List, Dict, Tuple, Any, Optional
 
-def stream_and_visualize_mapping(broadcast_path: str, tacticam_path: str, model_path: Optional[str] = None, use_gpu: bool = True, save_output: bool = True):
-    """
-    Stream both videos, run detection and mapping in real time, overlay results, and display/save visualization.
-    """
-    os.makedirs('output', exist_ok=True)
-    broadcast_cap = cv2.VideoCapture(broadcast_path)
-    tacticam_cap = cv2.VideoCapture(tacticam_path)
-    fps = broadcast_cap.get(cv2.CAP_PROP_FPS)
-    width = int(broadcast_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(broadcast_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    out = None
-    if save_output:
-        out = cv2.VideoWriter('output/visualization.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width*2, height))
-    mapper = PlayerMappingSystem(model_path, use_gpu)
-    frame_idx = 0
-    while True:
-        ret_b, frame_b = broadcast_cap.read()
-        ret_t, frame_t = tacticam_cap.read()
-        if not ret_b or not ret_t:
-            break
-        players_b = mapper.detect_players_in_frame(frame_b, frame_idx)
-        players_t = mapper.detect_players_in_frame(frame_t, frame_idx)
-        # Simple mapping: by index (for demo); replace with real mapping logic
-        for i, player in enumerate(players_b):
-            bbox = player['bbox']
-            cv2.rectangle(frame_b, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0,255,0), 2)
-            cv2.putText(frame_b, f"B{i}", (int(bbox[0]), int(bbox[1])-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-        for i, player in enumerate(players_t):
-            bbox = player['bbox']
-            cv2.rectangle(frame_t, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255,0,0), 2)
-            cv2.putText(frame_t, f"T{i}", (int(bbox[0]), int(bbox[1])-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 2)
-        vis = cv2.hconcat([frame_b, frame_t])
-        cv2.imshow('Player Mapping Visualization', vis)
-        if save_output and out is not None:
-            out.write(vis)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-        frame_idx += 1
-    broadcast_cap.release()
-    tacticam_cap.release()
-    if out is not None:
-        out.release()
-    cv2.destroyAllWindows()
+"""
+Visualization utilities for the Soccer Player Cross-Mapping System.
+Provides functions to generate mapping visualizations from results.
+"""
 
-def create_visualization_from_existing(broadcast_path: str, mapping_results_path: str, output_path: str, max_frames: int = 1000) -> bool:
+def create_visualization_video(
+    broadcast_path: str,
+    tacticam_path: str,
+    mapping_results_path: str,
+    output_video_path: str = "output/broadcast_with_mapping.mp4",
+    max_frames: int = 1000,
+    detect_players_fn=None,
+) -> bool:
     """
-    Create visualization video from existing mapping results.
+    Create a visualization video showing player mappings between broadcast and tacticam views.
+    Args:
+        broadcast_path: Path to broadcast video.
+        tacticam_path: Path to tacticam video.
+        mapping_results_path: Path to mapping results JSON.
+        output_video_path: Path to save the output video.
+        max_frames: Maximum number of frames to process.
+        detect_players_fn: Function to detect players in a frame (frame, frame_idx) -> List[Dict].
+    Returns:
+        True if successful, False otherwise.
     """
     logger = logging.getLogger(__name__)
-    logger.info("=" * 60)
-    logger.info("CREATING VISUALIZATION FROM EXISTING RESULTS")
-    logger.info("=" * 60)
-    if not os.path.exists(broadcast_path):
-        logger.error(f"❌ Broadcast video not found: {broadcast_path}")
-        return False
-    if not os.path.exists(mapping_results_path):
-        logger.error(f"❌ Mapping results not found: {mapping_results_path}")
-        return False
+    logger.info("Creating visualization video...")
     try:
-        logger.info("Initializing visualization system...")
-        mapper = PlayerMappingSystem(use_gpu=True)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        success = mapper.create_visualization_video(
-            broadcast_path=broadcast_path,
-            mapping_results_path=mapping_results_path,
-            output_video_path=output_path,
-            max_frames=max_frames
-        )
-        if success:
-            logger.info("=" * 60)
-            logger.info("✅ VISUALIZATION COMPLETED SUCCESSFULLY!")
-            logger.info("=" * 60)
-            logger.info(f"📹 Output video: {output_path}")
-            logger.info(f"📊 Source mapping data: {mapping_results_path}")
-            logger.info(f"🎬 Source broadcast video: {broadcast_path}")
-            try:
-                output_size = os.path.getsize(output_path) / (1024*1024)
-                source_size = os.path.getsize(broadcast_path) / (1024*1024)
-                logger.info(f"📏 Output file size: {output_size:.1f} MB")
-                logger.info(f"📏 Source file size: {source_size:.1f} MB")
-            except:
-                pass
-            logger.info("\n🎯 Visualization Features:")
-            logger.info("• Colored bounding boxes for each detected player")
-            logger.info("• Persistent player IDs (P1, P2, P3, etc.)")
-            logger.info("• Detection confidence scores")
-            logger.info("• Cross-camera mapping information")
-            logger.info("• Frame counter and processing statistics")
-            logger.info("• Semi-transparent overlay with system info")
-        else:
-            logger.error("❌ Visualization creation failed!")
-        return success
-    except Exception as e:
-        logger.error(f"❌ Visualization failed with error: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
-
-def create_full_pipeline(broadcast_path: str, tacticam_path: str, output_video_path: str, mapping_results_path: str = None, model_path: str = None, max_frames: int = 500) -> bool:
-    """
-    Run full pipeline: mapping + visualization.
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("=" * 60)
-    logger.info("RUNNING FULL PIPELINE: MAPPING + VISUALIZATION")
-    logger.info("=" * 60)
-    if not os.path.exists(broadcast_path):
-        logger.error(f"❌ Broadcast video not found: {broadcast_path}")
-        return False
-    if not os.path.exists(tacticam_path):
-        logger.error(f"❌ Tacticam video not found: {tacticam_path}")
-        return False
-    if mapping_results_path is None:
-        mapping_results_path = "output/mapping_results.json"
-    try:
-        logger.info("Initializing player mapping system...")
-        mapper = PlayerMappingSystem(
-            model_path=model_path if model_path and os.path.exists(model_path) else None,
-            use_gpu=True
-        )
-        gpu_info = mapper.gpu_manager.get_device_info()
-        logger.info(f"Using device: {gpu_info['device_name']} ({gpu_info['device']})")
-        os.makedirs(os.path.dirname(mapping_results_path), exist_ok=True)
-        os.makedirs(os.path.dirname(output_video_path), exist_ok=True)
-        logger.info("\n" + "=" * 40)
-        logger.info("STEP 1: CREATING PLAYER MAPPINGS")
-        logger.info("=" * 40)
-        results = mapper.process_videos(
-            broadcast_path=broadcast_path,
-            tacticam_path=tacticam_path,
-            output_path=mapping_results_path,
-            max_frames=max_frames,
-            batch_size=8 if gpu_info['gpu_available'] else 1
-        )
-        if not results:
-            logger.error("❌ Mapping process failed!")
+        if not os.path.exists(mapping_results_path):
+            logger.error(f"Mapping results file not found: {mapping_results_path}")
             return False
-        mappings = results.get('global_mapping', {}).get('mappings', {})
-        if mappings:
-            logger.info(f"✅ Successfully mapped {len(mappings)} players:")
-            confidences = results.get('global_mapping', {}).get('confidence', {})
-            for broadcast_id, tacticam_id in mappings.items():
-                confidence = confidences.get(broadcast_id, 0)
-                logger.info(f"  {broadcast_id} ↔ {tacticam_id} (confidence: {confidence:.3f})")
-        else:
-            logger.warning("⚠️  No player mappings found")
-        logger.info("\n" + "=" * 40)
-        logger.info("STEP 2: CREATING VISUALIZATION")
-        logger.info("=" * 40)
-        viz_success = mapper.create_visualization_video(
-            broadcast_path=broadcast_path,
-            mapping_results_path=mapping_results_path,
-            output_video_path=output_video_path,
-            max_frames=max_frames
+        if not os.path.exists(tacticam_path):
+            logger.error(f"Tacticam video not found: {tacticam_path}")
+            return False
+        with open(mapping_results_path, "r") as f:
+            results = json.load(f)
+        frame_mappings = results.get("frame_by_frame_mappings", [])
+        if not frame_mappings:
+            logger.error("No frame mappings found in results")
+            return False
+        cap_broadcast = cv2.VideoCapture(broadcast_path)
+        cap_tacticam = cv2.VideoCapture(tacticam_path)
+        if not cap_broadcast.isOpened() or not cap_tacticam.isOpened():
+            logger.error(
+                f"Failed to open broadcast or tacticam video: {broadcast_path}, {tacticam_path}"
+            )
+            return False
+        fps = cap_broadcast.get(cv2.CAP_PROP_FPS)
+        width = int(cap_broadcast.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap_broadcast.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap_broadcast.get(cv2.CAP_PROP_FRAME_COUNT))
+        os.makedirs(os.path.dirname(output_video_path), exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(output_video_path, fourcc, fps, (width * 2, height))
+        if not out.isOpened():
+            logger.error("Failed to create output video writer")
+            cap_broadcast.release()
+            cap_tacticam.release()
+            return False
+        frame_mapping_dict = {mapping_data["frame"]: mapping_data for mapping_data in frame_mappings}
+        frame_count = 0
+        processed_frames = 0
+        logger.info(f"Processing {min(max_frames, total_frames)} frames...")
+        while frame_count < max_frames:
+            ret_b, frame_b = cap_broadcast.read()
+            ret_t, frame_t = cap_tacticam.read()
+            if not ret_b or not ret_t:
+                break
+            vis_b = frame_b.copy()
+            vis_t = frame_t.copy()
+            if frame_count in frame_mapping_dict:
+                mapping_data = frame_mapping_dict[frame_count]
+                frame_mappings_dict = mapping_data.get("mapping", {})
+                # Detect players in both views
+                players_b = detect_players_fn(frame_b, frame_count) if detect_players_fn else []
+                players_t = detect_players_fn(frame_t, frame_count) if detect_players_fn else []
+                # Build reverse mapping for tacticam
+                reverse_mapping = {v: k for k, v in frame_mappings_dict.items()}
+                # Draw green bboxes for mapped players
+                for i, player in enumerate(players_b):
+                    key = f"broadcast_{i}"
+                    bbox = player["bbox"]
+                    color = (
+                        (0, 255, 0)
+                        if key in frame_mappings_dict
+                        else (128, 128, 128)
+                    )
+                    cv2.rectangle(
+                        vis_b,
+                        (int(bbox[0]), int(bbox[1])),
+                        (int(bbox[2]), int(bbox[3])),
+                        color,
+                        2,
+                    )
+                for j, player in enumerate(players_t):
+                    key = f"tacticam_{j}"
+                    bbox = player["bbox"]
+                    color = (
+                        (0, 255, 0) if key in reverse_mapping else (128, 128, 128)
+                    )
+                    cv2.rectangle(
+                        vis_t,
+                        (int(bbox[0]), int(bbox[1])),
+                        (int(bbox[2]), int(bbox[3])),
+                        color,
+                        2,
+                    )
+                processed_frames += 1
+            vis = cv2.hconcat([vis_b, vis_t])
+            vis = _add_frame_info_overlay(vis, frame_count, processed_frames)
+            out.write(vis)
+            if frame_count % 100 == 0:
+                logger.info(
+                    f"Processed {frame_count}/{min(max_frames, total_frames)} frames..."
+                )
+            frame_count += 1
+        cap_broadcast.release()
+        cap_tacticam.release()
+        out.release()
+        logger.info(
+            f"Visualization video created successfully: {output_video_path}"
         )
-        if viz_success:
-            logger.info("\n" + "=" * 60)
-            logger.info("🎉 FULL PIPELINE COMPLETED SUCCESSFULLY!")
-        else:
-            logger.error("❌ Visualization step failed!")
-        return viz_success
+        logger.info(f"Processed {processed_frames} frames with player mappings")
+        return True
     except Exception as e:
-        logger.error(f"❌ Full pipeline failed with error: {e}")
+        logger.error(f"Visualization creation failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return False 
+        return False
+
+def _add_frame_info_overlay(frame: Any, frame_num: int, processed_frames: int) -> Any:
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (10, 10), (400, 100), (0, 0, 0), -1)
+    frame = cv2.addWeighted(frame, 0.8, overlay, 0.2, 0)
+    cv2.putText(
+        frame,
+        f"Frame: {frame_num}",
+        (20, 35),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"Mapped Frames: {processed_frames}",
+        (20, 60),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        "Player Mapping Visualization",
+        (20, 85),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 255),
+        2,
+    )
+    return frame
+
+def visualize_mapping_from_file(
+    broadcast_path: str,
+    tacticam_path: str,
+    mapping_results_path: str = "output/player_mapping_results.json",
+    output_video_path: str = "output/broadcast_with_mapping.mp4",
+    detect_players_fn=None,
+) -> bool:
+    """
+    Wrapper to create visualization from mapping results file.
+    """
+    return create_visualization_video(
+        broadcast_path=broadcast_path,
+        tacticam_path=tacticam_path,
+        mapping_results_path=mapping_results_path,
+        output_video_path=output_video_path,
+        detect_players_fn=detect_players_fn,
+    ) 
