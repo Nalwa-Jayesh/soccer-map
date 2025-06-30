@@ -1,0 +1,8 @@
+ultralytics
+opencv-contrib-python
+numpy
+scipy
+scikit-learn
+matplotlib
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch
