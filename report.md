@@ -41,12 +41,24 @@ For each detected player, a multi-modal feature vector is extracted to create a 
 - **Team-Uniform Ambiguity:** In many matches, both teams wear uniforms with similar base colors, and even within a team, the primary and alternate jerseys can be confusing. Differentiating between teammates based solely on appearance is difficult without features like jersey numbers, which are not explicitly extracted by this system.
 - **Real-time Performance:** While GPU acceleration and batching help, achieving true real-time processing for high-resolution video streams is computationally intensive and requires careful optimization of every pipeline step, from frame decoding to rendering the final visualization.
 
-## 4. Future Work and Improvements
+## 4. Refactoring and Codebase Improvements
 
-Given more time and resources, the following improvements could be made:
+- **Centralized Configuration:** All key parameters (paths, thresholds, batch sizes) are now easily adjustable in one place (`CONFIG` in `mapping.py`).
+- **Redundant Code Removed:** All legacy and duplicate scripts/utilities have been removed, reducing confusion and maintenance burden.
+- **Improved Documentation:** All modules and functions now include clear, consistent docstrings, making the codebase easier to understand and extend.
+- **Modularization:** Visualization logic is now modular and centralized in `src/visualization.py`, and the core logic is in `src/core.py`.
 
-- **Jersey Number Recognition:** Implement an Optical Character Recognition (OCR) model to read jersey numbers. This would provide a highly discriminative feature and resolve most mapping ambiguities, especially for players on the same team.
-- **Advanced Tracking Algorithms:** Replace the current simple tracking with more sophisticated algorithms like **DeepSORT** or a Kalman filter-based approach. This would improve temporal consistency, allowing the system to maintain player identities through occlusions or brief detection failures.
-- **Homography Transformation:** Instead of simple spatial heuristics, compute a **homography matrix** to map the 2D pitch coordinates from the broadcast view to the tactical view. This would create a much more accurate spatial prior for the matching algorithm, significantly improving mapping accuracy.
-- **More Robust Feature Descriptors:** Explore using deep learning-based feature descriptors. A Siamese network could be trained to learn a feature representation that is invariant to changes in viewpoint, scale, and lighting, leading to a much more powerful similarity measure.
-- **End-to-End Pipeline:** The current system processes videos that are assumed to be pre-recorded and synchronized. A future version could be built into an end-to-end system that ingests live camera feeds, performs automatic synchronization, and outputs the mapping in real-time. 
+### Benefits for Maintainability and Future Development
+
+- **Easier Tuning:** Centralized configuration allows for quick experimentation and adaptation to new datasets or requirements.
+- **Cleaner Codebase:** Removing dead code and redundant scripts reduces the risk of bugs and makes onboarding new contributors easier.
+- **Better Documentation:** Consistent docstrings and a clear README lower the barrier for future development and collaboration.
+- **Extensibility:** The modular structure makes it straightforward to add new features, such as advanced tracking or improved visualization, without disrupting the core pipeline.
+
+## 5. If Incomplete, Next Steps
+
+If further improvements are needed, consider:
+- Integrating jersey number recognition for more robust player identification.
+- Implementing advanced tracking algorithms for temporal consistency.
+- Exploring deep learning-based feature descriptors for improved matching.
+- Building an end-to-end real-time system for live camera feeds. 
