@@ -55,7 +55,7 @@ For each detected player, a multi-modal feature vector is extracted to create a 
 - **Better Documentation:** Consistent docstrings and a clear README lower the barrier for future development and collaboration.
 - **Extensibility:** The modular structure makes it straightforward to add new features, such as advanced tracking or improved visualization, without disrupting the core pipeline.
 
-## 5. If Incomplete, Next Steps
+## 5. Further Improvements
 
 If further improvements are needed, consider:
 - Integrating jersey number recognition for more robust player identification.
